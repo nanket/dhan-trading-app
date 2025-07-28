@@ -1,0 +1,116 @@
+# Dhan AI Trader Configuration
+
+# API Configuration
+api:
+  base_url: "https://api.dhan.co"
+  websocket_url: "wss://api-feed.dhan.co"
+  timeout: 30
+  max_retries: 3
+  retry_delay: 1.0
+  rate_limit:
+    requests_per_second: 10
+    burst_limit: 50
+
+# Database Configuration
+database:
+  url: "sqlite:///data/trading.db"
+  echo: false
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout: 30
+
+# Market Data Configuration
+market_data:
+  exchanges: ["NSE", "BSE"]
+  instruments: ["EQUITY", "OPTION", "FUTURE"]
+  subscription_limit: 1000
+  heartbeat_interval: 30
+  reconnect_attempts: 5
+  reconnect_delay: 5.0
+
+# Options Configuration
+options:
+  default_expiry_days: 30
+  max_strike_range: 20
+  greeks_calculation:
+    risk_free_rate: 0.06
+    dividend_yield: 0.0
+    calculation_frequency: 1.0  # seconds
+  implied_volatility:
+    initial_guess: 0.2
+    max_iterations: 100
+    tolerance: 1e-6
+
+# Risk Management
+risk_management:
+  max_position_size_percent: 5.0  # % of account balance
+  max_daily_loss_percent: 2.0
+  max_drawdown_percent: 10.0
+  position_sizing:
+    kelly_criterion: true
+    max_kelly_fraction: 0.25
+  stop_loss:
+    default_percent: 20.0
+    trailing_stop: true
+  take_profit:
+    default_percent: 50.0
+
+# Trading Configuration
+trading:
+  default_order_type: "LIMIT"
+  default_validity: "DAY"
+  slippage_tolerance: 0.1  # %
+  min_order_value: 1000
+  max_orders_per_minute: 10
+  strategy_execution:
+    max_concurrent_strategies: 5
+    rebalance_frequency: 300  # seconds
+
+# Analytics Configuration
+analytics:
+  performance_metrics:
+    - "total_return"
+    - "sharpe_ratio"
+    - "max_drawdown"
+    - "win_rate"
+    - "profit_factor"
+  backtesting:
+    default_start_date: "2023-01-01"
+    commission_per_trade: 20.0
+    slippage_bps: 5
+  reporting:
+    daily_reports: true
+    weekly_reports: true
+    monthly_reports: true
+
+# Dashboard Configuration
+dashboard:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  auto_reload: true
+  refresh_interval: 1.0  # seconds
+  max_chart_points: 1000
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/dhan_trader.log"
+  max_file_size: "10MB"
+  backup_count: 5
+  structured_logging: true
+
+# Security Configuration
+security:
+  token_refresh_threshold: 3600  # seconds
+  encrypt_sensitive_data: true
+  audit_trail: true
+  session_timeout: 28800  # 8 hours
+
+# Development Configuration
+development:
+  mock_api: false
+  paper_trading: true
+  debug_websocket: false
+  save_raw_data: false
