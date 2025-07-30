@@ -93,3 +93,8 @@ class StrategyError(DhanTraderError):
 class BacktestError(DhanTraderError):
     """Backtesting related errors."""
     pass
+
+
+class AnalysisError(DhanTraderError):
+    """Market analysis related errors."""
+    pass

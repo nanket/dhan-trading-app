@@ -74,6 +74,16 @@ class Greeks:
 
 
 @dataclass
+class OIChangeData:
+    """Open Interest change data."""
+    absolute_change: int  # Absolute change in OI
+    percentage_change: float  # Percentage change in OI
+    previous_oi: int  # Previous session OI
+    current_oi: int  # Current OI
+    timestamp: datetime  # When the change was calculated
+
+
+@dataclass
 class OptionData:
     """Option contract data."""
     greeks: Greeks
@@ -88,6 +98,7 @@ class OptionData:
     top_bid_price: float
     top_bid_quantity: int
     volume: int
+    oi_change: Optional[OIChangeData] = None  # OI change data
 
 
 @dataclass
@@ -209,3 +220,148 @@ class HistoricalData:
     close_price: float
     volume: int
     oi: Optional[int] = None
+
+
+@dataclass
+class MarketDepthLevel:
+    """Single level of market depth data."""
+    price: float
+    quantity: int
+    orders: int
+
+
+@dataclass
+class MarketDepth20Level:
+    """20-level market depth data for a single side (bid or ask)."""
+    levels: List[MarketDepthLevel]
+    side: str  # "BID" or "ASK"
+    security_id: str
+    exchange_segment: str
+    timestamp: datetime
+
+
+@dataclass
+class MarketDepth20Response:
+    """Complete 20-level market depth response."""
+    security_id: str
+    exchange_segment: str
+    bid_depth: MarketDepth20Level
+    ask_depth: MarketDepth20Level
+    timestamp: datetime
+
+    def get_total_bid_quantity(self) -> int:
+        """Get total bid quantity across all levels."""
+        return sum(level.quantity for level in self.bid_depth.levels)
+
+    def get_total_ask_quantity(self) -> int:
+        """Get total ask quantity across all levels."""
+        return sum(level.quantity for level in self.ask_depth.levels)
+
+    def get_bid_ask_ratio(self) -> float:
+        """Get bid to ask quantity ratio."""
+        total_ask = self.get_total_ask_quantity()
+        if total_ask == 0:
+            return float('inf')
+        return self.get_total_bid_quantity() / total_ask
+
+    def detect_demand_supply_zones(self, threshold_multiplier: float = 2.0) -> Dict[str, List[int]]:
+        """Detect significant demand/supply zones based on quantity concentration."""
+        avg_bid_qty = self.get_total_bid_quantity() / len(self.bid_depth.levels) if self.bid_depth.levels else 0
+        avg_ask_qty = self.get_total_ask_quantity() / len(self.ask_depth.levels) if self.ask_depth.levels else 0
+
+        demand_zones = []  # Indices of significant bid levels
+        supply_zones = []  # Indices of significant ask levels
+
+        # Find bid levels with significantly higher quantity
+        for i, level in enumerate(self.bid_depth.levels):
+            if level.quantity > avg_bid_qty * threshold_multiplier:
+                demand_zones.append(i)
+
+        # Find ask levels with significantly higher quantity
+        for i, level in enumerate(self.ask_depth.levels):
+            if level.quantity > avg_ask_qty * threshold_multiplier:
+                supply_zones.append(i)
+
+        return {
+            "demand_zones": demand_zones,
+            "supply_zones": supply_zones
+        }
+
+
+@dataclass
+class DemandSupplyZones:
+    """Demand and supply zones in market depth."""
+    demand_zones: List[int]  # Indices of significant bid levels
+    supply_zones: List[int]  # Indices of significant ask levels
+
+
+@dataclass
+class MarketDepthAnalysis:
+    """Analysis of 20-level market depth data."""
+    total_bid_quantity: int
+    total_ask_quantity: int
+    bid_ask_ratio: float
+    zones: DemandSupplyZones
+    price_levels: Dict[str, Optional[MarketDepthLevel]]
+
+
+# Enhanced OI Recommendation Models
+@dataclass
+class IndividualStrikeResponse:
+    """Response model for individual strike analysis."""
+    strike: float
+    ce_oi: int
+    pe_oi: int
+    ce_volume: int
+    pe_volume: int
+    pe_ce_oi_ratio: float
+    signal: str  # "bullish", "bearish", "neutral"
+    significance: str  # "high", "medium", "low"
+    distance_from_spot: float
+    distance_category: str  # "ITM", "ATM", "OTM"
+    reasoning: str
+    trading_implications: str
+    data_available: bool
+
+
+@dataclass
+class RangeOIResponse:
+    """Response model for range-based OI analysis."""
+    range_start: float
+    range_end: float
+    current_price: float
+    total_ce_oi: int
+    total_pe_oi: int
+    pe_ce_ratio: float
+    range_sentiment: str  # "bullish", "bearish", "neutral"
+    confidence: float
+    key_strikes: List[float]
+    interpretation: str
+    trading_implications: str
+
+
+@dataclass
+class EnhancedOIRecommendationResponse:
+    """Enhanced OI-based trading recommendation response."""
+    # Overall recommendation
+    signal: str  # "bullish", "bearish", "neutral"
+    confidence: float  # 0.0 to 1.0
+    current_price: float
+
+    # Range-based analysis
+    range_analysis: RangeOIResponse
+
+    # Individual strike analysis
+    individual_strikes: List[IndividualStrikeResponse]
+
+    # Key bracketing strikes (for backward compatibility)
+    lower_strike: float
+    upper_strike: float
+    lower_strike_analysis: Dict[str, Any]  # For backward compatibility
+    upper_strike_analysis: Dict[str, Any]  # For backward compatibility
+
+    # Combined interpretation
+    reasoning: str
+    risk_warning: str
+    timestamp: str
+    ai_enhancement: Optional[str] = None

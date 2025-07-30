@@ -114,6 +114,9 @@ class Config:
         self.logging = self._config_data.get("logging", {})
         self.security = self._config_data.get("security", {})
         self.development = self._config_data.get("development", {})
+
+        # AI configuration
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
     
     def _get_default_config_path(self) -> str:
         """Get default configuration file path."""

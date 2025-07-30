@@ -1,0 +1,4 @@
+python -m src.dhan_trader.main
+
+Main application (python -m src.dhan_trader.main) - for demos and testing
+API server (python -m dhan_trader.api.server) - for web API requests
