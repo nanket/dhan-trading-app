@@ -161,3 +161,54 @@ class QuickOISignalResponse(BaseModel):
     upper_strike: float = Field(..., description="Upper strike price")
     summary: str = Field(..., description="Quick summary of the signal")
     timestamp: str = Field(..., description="Analysis timestamp")
+
+
+# Enhanced Chat Models for Dynamic OI Analysis
+class OIPatternModel(BaseModel):
+    """Model for detected OI patterns."""
+    pattern_type: str = Field(..., description="Type of pattern detected")
+    confidence: float = Field(..., description="Pattern confidence (0.0 to 1.0)")
+    description: str = Field(..., description="Human-readable pattern description")
+    strikes_involved: List[float] = Field(..., description="Strike prices involved in pattern")
+    magnitude: float = Field(..., description="Pattern magnitude/strength")
+    direction: str = Field(..., description="Pattern direction: bullish/bearish/neutral")
+    time_horizon: str = Field(..., description="Expected time horizon: short/medium/long")
+    risk_level: str = Field(..., description="Risk level: low/medium/high")
+
+
+class DynamicOIAnalysisModel(BaseModel):
+    """Model for dynamic OI analysis results."""
+    timestamp: datetime = Field(..., description="Analysis timestamp")
+    underlying_price: float = Field(..., description="Current underlying price")
+    patterns: List[OIPatternModel] = Field(..., description="Detected OI patterns")
+    overall_sentiment: str = Field(..., description="Overall market sentiment")
+    confidence_score: float = Field(..., description="Overall confidence (0.0 to 1.0)")
+    recommendation: str = Field(..., description="Trading recommendation")
+    reasoning: str = Field(..., description="AI reasoning for recommendation")
+    risk_assessment: str = Field(..., description="Risk assessment")
+    key_levels: List[float] = Field(..., description="Key support/resistance levels")
+    statistical_summary: Dict[str, Any] = Field(..., description="Statistical summary of OI data")
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class EnhancedChatRequest(BaseModel):
+    """Request model for enhanced chat with dynamic OI analysis."""
+    message: str = Field(..., description="User message", min_length=1, max_length=1000)
+    session_id: Optional[str] = Field(None, description="Chat session ID")
+    use_market_data: bool = Field(True, description="Whether to use real-time market data")
+    force_oi_analysis: bool = Field(False, description="Force dynamic OI analysis even for general queries")
+
+
+class EnhancedChatResponse(BaseModel):
+    """Response model for enhanced chat with dynamic OI analysis."""
+    message: ChatMessage = Field(..., description="Assistant response message")
+    session_id: str = Field(..., description="Chat session ID")
+    processing_time: float = Field(..., description="Response processing time in seconds")
+    analysis_type: str = Field(..., description="Type of analysis performed")
+    oi_analysis: Optional[DynamicOIAnalysisModel] = Field(None, description="Dynamic OI analysis if performed")
+    confidence_score: Optional[float] = Field(None, description="Overall confidence score")
+    market_data_used: bool = Field(False, description="Whether real-time market data was used")

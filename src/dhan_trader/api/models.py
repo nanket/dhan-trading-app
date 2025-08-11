@@ -365,3 +365,51 @@ class EnhancedOIRecommendationResponse:
     risk_warning: str
     timestamp: str
     ai_enhancement: Optional[str] = None
+
+
+# Range OI Analysis Models
+@dataclass
+class RangeStrikeOIData:
+    """Individual strike OI data for range analysis."""
+    strike: float
+    call_oi: int
+    put_oi: int
+    call_oi_change: int
+    put_oi_change: int
+    call_oi_change_pct: float
+    put_oi_change_pct: float
+    call_volume: int
+    put_volume: int
+    timestamp: str
+
+
+@dataclass
+class RangeOIMetricsData:
+    """Calculated metrics for range OI analysis."""
+    total_call_oi: int
+    total_put_oi: int
+    total_call_oi_change: int
+    total_put_oi_change: int
+    average_call_oi: float
+    average_put_oi: float
+    average_call_oi_change: float
+    average_put_oi_change: float
+    strike_count: int
+    call_put_ratio: float
+    net_oi_change: int
+    dominant_side: str  # "CALL", "PUT", "NEUTRAL"
+
+
+@dataclass
+class RangeOIAnalysisResponse:
+    """Complete range OI analysis response."""
+    expiry: str
+    range_start: float
+    range_end: float
+    interval: str
+    strikes_data: List[RangeStrikeOIData]
+    metrics: RangeOIMetricsData
+    analysis_time: str
+    underlying_price: float
+    total_strikes_analyzed: int
+    historical_data: Optional[List[Dict[str, Any]]] = None

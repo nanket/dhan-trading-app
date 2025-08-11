@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -17,17 +18,24 @@ from ..market_data.manager import MarketDataManager
 from ..market_data.depth_manager import MarketDepthManager
 from ..ai.trading_advisor import TradingAdvisor
 from ..ai.chat_service import ChatService
+from ..ai.enhanced_chat_service import EnhancedChatService
+from ..ai.dynamic_oi_analyzer import DynamicOIAnalyzer
 from ..strategies.oi_strategy import SameerSirOIStrategy
 from ..strategies.range_oi_strategy import RangeOIStrategy
 from ..analysis.depth_analyzer import MarketDepthAnalyzer
+from ..analysis.range_oi_analyzer import RangeOIAnalyzer
 from ..exceptions import DhanTraderError, AuthenticationError, APIError
 from .chat_models import (
     ChatRequest, ChatResponse, AnalysisRequest, AnalysisResponse,
     StrategyRequest, StrategyResponse, QuickAnalysisRequest, QuickAnalysisResponse,
     RangeOIRequest, RangeOIResponse, OIRecommendationRequest, OIRecommendationResponse,
-    QuickOISignalResponse
+    QuickOISignalResponse, EnhancedChatRequest, EnhancedChatResponse,
+    DynamicOIAnalysisModel, OIPatternModel
 )
-from .models import EnhancedOIRecommendationResponse, RangeOIResponse as RangeOIResponseModel, IndividualStrikeResponse
+from .models import (
+    EnhancedOIRecommendationResponse, RangeOIResponse as RangeOIResponseModel,
+    IndividualStrikeResponse, RangeOIAnalysisResponse, RangeStrikeOIData, RangeOIMetricsData
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +46,8 @@ market_depth_manager: Optional[MarketDepthManager] = None
 depth_analyzer: Optional[MarketDepthAnalyzer] = None
 trading_advisor: Optional[TradingAdvisor] = None
 chat_service: Optional[ChatService] = None
+enhanced_chat_service: Optional[EnhancedChatService] = None
+range_oi_analyzer: Optional[RangeOIAnalyzer] = None
 oi_strategy: Optional[SameerSirOIStrategy] = None
 range_oi_strategy: Optional[RangeOIStrategy] = None
 websocket_connections: List[WebSocket] = []
@@ -174,7 +184,7 @@ class WebSocketMessage(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    global api_client, market_data_manager, market_depth_manager, depth_analyzer, trading_advisor, chat_service, range_oi_strategy
+    global api_client, market_data_manager, market_depth_manager, depth_analyzer, trading_advisor, chat_service, enhanced_chat_service, range_oi_strategy, range_oi_analyzer
 
     try:
         # Initialize API client
@@ -199,6 +209,18 @@ async def lifespan(app: FastAPI):
         # Initialize chat service
         chat_service = ChatService(trading_advisor)
         logger.info("Chat service initialized")
+
+        # Initialize enhanced chat service with dynamic OI analysis
+        enhanced_chat_service = EnhancedChatService(
+            market_data_manager,
+            trading_advisor.ai_client,
+            trading_advisor
+        )
+        logger.info("Enhanced chat service with dynamic OI analysis initialized")
+
+        # Initialize range OI analyzer
+        range_oi_analyzer = RangeOIAnalyzer(market_data_manager)
+        logger.info("Range OI analyzer initialized")
 
         # Initialize OI strategy
         global oi_strategy, range_oi_strategy
@@ -278,6 +300,20 @@ def get_chat_service() -> ChatService:
     if chat_service is None:
         raise HTTPException(status_code=500, detail="Chat service not initialized")
     return chat_service
+
+
+def get_enhanced_chat_service() -> EnhancedChatService:
+    """Dependency to get enhanced chat service."""
+    if enhanced_chat_service is None:
+        raise HTTPException(status_code=500, detail="Enhanced chat service not initialized")
+    return enhanced_chat_service
+
+
+def get_range_oi_analyzer() -> RangeOIAnalyzer:
+    """Dependency to get range OI analyzer."""
+    if range_oi_analyzer is None:
+        raise HTTPException(status_code=500, detail="Range OI analyzer not initialized")
+    return range_oi_analyzer
 
 
 def get_oi_strategy() -> SameerSirOIStrategy:
@@ -1031,6 +1067,258 @@ async def get_quick_analysis(
         )
     except Exception as e:
         logger.error(f"Error getting quick analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Enhanced AI Chat endpoints with Dynamic OI Analysis
+@app.post("/api/chat/enhanced", response_model=EnhancedChatResponse)
+async def send_enhanced_chat_message(
+    request: EnhancedChatRequest,
+    enhanced_chat_service: EnhancedChatService = Depends(get_enhanced_chat_service)
+):
+    """Send a message to the enhanced AI trading advisor with dynamic OI analysis."""
+    try:
+        start_time = time.time()
+
+        response = await enhanced_chat_service.send_message_enhanced(
+            message=request.message,
+            session_id=request.session_id,
+            use_market_data=request.use_market_data
+        )
+
+        processing_time = time.time() - start_time
+
+        # Convert internal models to API models
+        oi_analysis_model = None
+        if response.oi_analysis:
+            patterns = [
+                OIPatternModel(
+                    pattern_type=p.pattern_type,
+                    confidence=p.confidence,
+                    description=p.description,
+                    strikes_involved=p.strikes_involved,
+                    magnitude=p.magnitude,
+                    direction=p.direction,
+                    time_horizon=p.time_horizon,
+                    risk_level=p.risk_level
+                )
+                for p in response.oi_analysis.patterns
+            ]
+
+            oi_analysis_model = DynamicOIAnalysisModel(
+                timestamp=response.oi_analysis.timestamp,
+                underlying_price=response.oi_analysis.underlying_price,
+                patterns=patterns,
+                overall_sentiment=response.oi_analysis.overall_sentiment,
+                confidence_score=response.oi_analysis.confidence_score,
+                recommendation=response.oi_analysis.recommendation,
+                reasoning=response.oi_analysis.reasoning,
+                risk_assessment=response.oi_analysis.risk_assessment,
+                key_levels=response.oi_analysis.key_levels,
+                statistical_summary=response.oi_analysis.statistical_summary
+            )
+
+        return EnhancedChatResponse(
+            message=response.message,
+            session_id=response.message.id,  # Use message ID as session ID for now
+            processing_time=processing_time,
+            analysis_type=response.analysis_type,
+            oi_analysis=oi_analysis_model,
+            confidence_score=response.confidence_score,
+            market_data_used=request.use_market_data
+        )
+
+    except Exception as e:
+        logger.error(f"Error processing enhanced chat message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chat/dynamic-oi-analysis", response_model=DynamicOIAnalysisModel)
+async def get_dynamic_oi_analysis(
+    underlying_scrip: int = 13,
+    expiry: Optional[str] = None,
+    enhanced_chat_service: EnhancedChatService = Depends(get_enhanced_chat_service)
+):
+    """Get dynamic OI analysis with AI-powered pattern recognition."""
+    try:
+        analysis = await enhanced_chat_service.get_dynamic_oi_analysis(
+            underlying_scrip=underlying_scrip,
+            expiry=expiry
+        )
+
+        # Convert internal model to API model
+        patterns = [
+            OIPatternModel(
+                pattern_type=p.pattern_type,
+                confidence=p.confidence,
+                description=p.description,
+                strikes_involved=p.strikes_involved,
+                magnitude=p.magnitude,
+                direction=p.direction,
+                time_horizon=p.time_horizon,
+                risk_level=p.risk_level
+            )
+            for p in analysis.patterns
+        ]
+
+        return DynamicOIAnalysisModel(
+            timestamp=analysis.timestamp,
+            underlying_price=analysis.underlying_price,
+            patterns=patterns,
+            overall_sentiment=analysis.overall_sentiment,
+            confidence_score=analysis.confidence_score,
+            recommendation=analysis.recommendation,
+            reasoning=analysis.reasoning,
+            risk_assessment=analysis.risk_assessment,
+            key_levels=analysis.key_levels,
+            statistical_summary=analysis.statistical_summary
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting dynamic OI analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Range OI Analysis endpoints
+@app.get("/api/range-oi-analysis", response_model=RangeOIAnalysisResponse)
+async def get_range_oi_analysis(
+    range_start: float,
+    range_end: float,
+    expiry: Optional[str] = None,
+    interval: str = "1min",
+    underlying_scrip: int = 13,
+    underlying_segment: str = "IDX_I",
+    range_oi_analyzer: RangeOIAnalyzer = Depends(get_range_oi_analyzer)
+):
+    """
+    Get comprehensive OI analysis for a specified strike range.
+
+    Args:
+        expiry: Option expiry date (YYYY-MM-DD)
+        range_start: Starting strike price (inclusive)
+        range_end: Ending strike price (inclusive)
+        interval: Data interval (1min, 5min, etc.)
+        underlying_scrip: Underlying instrument ID (13 for NIFTY)
+        underlying_segment: Market segment (IDX_I for indices)
+
+    Returns:
+        Complete range OI analysis with metrics and strike-wise data
+    """
+    try:
+        # Validate inputs
+        if range_start >= range_end:
+            raise HTTPException(
+                status_code=400,
+                detail="Range start must be less than range end"
+            )
+
+        if range_end - range_start > 1000:
+            raise HTTPException(
+                status_code=400,
+                detail="Range too large. Maximum range is 1000 points"
+            )
+
+        # Perform analysis
+        analysis = await range_oi_analyzer.analyze_range_oi(
+            expiry=expiry,
+            range_start=range_start,
+            range_end=range_end,
+            interval=interval,
+            underlying_scrip=underlying_scrip,
+            underlying_segment=underlying_segment
+        )
+
+        # Convert to response model
+        strikes_data = [
+            RangeStrikeOIData(
+                strike=strike.strike,
+                call_oi=strike.call_oi,
+                put_oi=strike.put_oi,
+                call_oi_change=strike.call_oi_change,
+                put_oi_change=strike.put_oi_change,
+                call_oi_change_pct=strike.call_oi_change_pct,
+                put_oi_change_pct=strike.put_oi_change_pct,
+                call_volume=strike.call_volume,
+                put_volume=strike.put_volume,
+                timestamp=strike.timestamp.isoformat()
+            )
+            for strike in analysis.strikes_data
+        ]
+
+        metrics_data = RangeOIMetricsData(
+            total_call_oi=analysis.metrics.total_call_oi,
+            total_put_oi=analysis.metrics.total_put_oi,
+            total_call_oi_change=analysis.metrics.total_call_oi_change,
+            total_put_oi_change=analysis.metrics.total_put_oi_change,
+            average_call_oi=analysis.metrics.average_call_oi,
+            average_put_oi=analysis.metrics.average_put_oi,
+            average_call_oi_change=analysis.metrics.average_call_oi_change,
+            average_put_oi_change=analysis.metrics.average_put_oi_change,
+            strike_count=analysis.metrics.strike_count,
+            call_put_ratio=analysis.metrics.call_put_ratio,
+            net_oi_change=analysis.metrics.net_oi_change,
+            dominant_side=analysis.metrics.dominant_side
+        )
+
+        return RangeOIAnalysisResponse(
+            expiry=analysis.expiry,
+            range_start=analysis.range_start,
+            range_end=analysis.range_end,
+            interval=analysis.interval,
+            strikes_data=strikes_data,
+            metrics=metrics_data,
+            analysis_time=analysis.analysis_time.isoformat(),
+            underlying_price=analysis.underlying_price,
+            total_strikes_analyzed=analysis.total_strikes_analyzed,
+            historical_data=analysis.historical_data
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in range OI analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/range-oi-analysis/historical")
+async def get_range_oi_historical(
+    range_start: float,
+    range_end: float,
+    expiry: Optional[str] = None,
+    lookback_minutes: int = 60,
+    range_oi_analyzer: RangeOIAnalyzer = Depends(get_range_oi_analyzer)
+):
+    """
+    Get historical OI data for time series charts.
+
+    Args:
+        expiry: Option expiry date (YYYY-MM-DD)
+        range_start: Starting strike price (inclusive)
+        range_end: Ending strike price (inclusive)
+        lookback_minutes: Minutes of historical data to fetch
+
+    Returns:
+        Historical OI data for charting
+    """
+    try:
+        historical_data = await range_oi_analyzer.get_historical_range_data(
+            expiry=expiry,
+            range_start=range_start,
+            range_end=range_end,
+            lookback_minutes=lookback_minutes
+        )
+
+        return {
+            "expiry": expiry,
+            "range_start": range_start,
+            "range_end": range_end,
+            "lookback_minutes": lookback_minutes,
+            "historical_data": historical_data,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting historical range OI data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
